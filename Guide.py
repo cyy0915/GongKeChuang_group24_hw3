@@ -1,3 +1,4 @@
+# coding: utf8
 import rospy
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist, Pose, Point, Quaternion
@@ -6,6 +7,8 @@ import actionlib
 from actionlib_msgs.msg import *
 import numpy as np
 import math
+from nav_msgs.msg import Odometry
+from tf import transformations
 
 # 自己写的Guide()类，还没写完，大家可以自行修改使用
 # cmd_vel 直接命令
@@ -13,7 +16,7 @@ import math
 class Guide():
     def __init__(self):
         rospy.init_node('guide_test')
-        rospy.Subscriber('/scan', LaserScan, self.callback)
+        rospy.Subscriber('/scan', LaserScan, self.laserScanCall)
         rospy.on_shutdown(self.shutdown)
         self.cmd_vel = rospy.Publisher('cmd_vel_mux/input/navi', Twist, queue_size=10)
         self.move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
@@ -22,6 +25,21 @@ class Guide():
         rospy.sleep(1)
         success = self.move_base.wait_for_server(rospy.Duration(5))
         print(success)
+
+        # wall following variables
+        self.pub = None
+        self.regions = {
+            'fright': 0,
+            'front': 0,
+            'fleft': 0,
+        }
+        self.state = 0
+        self.state_dict = {
+            0: 'find the wall',
+            1: 'turn left',
+            2: 'follow the wall',
+        }
+
         rospy.loginfo("Start")
     
     # 直走遇到障碍物停下
@@ -34,34 +52,62 @@ class Guide():
             self.rate.sleep()
         self.cmd_vel.publish(Twist())
 
-    # 沿墙走，算法还有问题
-    def goByWall(self, keepDistanceD = 0.4, keepDistanceU = 0.7):
-        move_cmd = Twist()
-        move_cmd.linear.x = 0.2
-        move_cmd.angular.z = 0
-        rotate_cmd = Twist()
-        rotate_cmd.linear.x = 0
-        rotate_cmd.angular.z = 0.5
-        rrotate_cmd = Twist()
-        rrotate_cmd.linear.x = 0
-        rrotate_cmd.angular.z = -0.5
-        lcount = 0
-        rcount = 0
-        while True:
-            if self.getAverageDistance(170,190) > keepDistanceD and self.getAverageDistance(170,190) < keepDistanceU:
-                self.cmd_vel.publish(move_cmd)
-            elif self.getAverageDistance(170,190) < keepDistanceD and rcount == 0:
-                self.cmd_vel.publish(rotate_cmd)
-                lcount = 10
-            elif lcount == 0:
-                self.cmd_vel.publish(rrotate_cmd)
-                rcount = 10
-            self.rate.sleep()
-            if lcount > 0:
-                lcount -= 1
-            if rcount > 0:
-                rcount -= 1
+    def changeStateInWallFollowing(self, state):
+        if state != self.state:
+            print 'Wall follower - [%s] - %s' % (state, self.state_dict[state])
+            self.state = state
 
+    def determineStateInWallFollowing(self):
+        self.regions = {
+            'fright': min(min(self.scanMsg.ranges[144:287]), 10),
+            'front':  min(min(self.scanMsg.ranges[288:431]), 10),
+            'fleft':  min(min(self.scanMsg.ranges[432:575]), 10),
+        }
+        regions = self.regions
+        state_description = ''
+        
+        d = 0.7
+        if regions['front'] < d:
+            state_description = 'case 1 - need to turn left'
+            self.changeStateInWallFollowing(1)
+        elif regions['fright'] > d:
+            state_description = 'case 2 - need to turn right'
+            self.changeStateInWallFollowing(0)
+        else: 
+            state_description = 'case 3 - follow the wall'
+            self.changeStateInWallFollowing(2)
+
+    def wallFollowing(self):
+        while not rospy.is_shutdown():
+            self.determineStateInWallFollowing()
+
+            msg = Twist()
+            if self.state == 0:
+                self.turn_right()
+            elif self.state == 1:
+                self.turn_left()
+            elif self.state == 2:
+                self.follow_the_wall()
+            else:
+                rospy.logerr('Unknown state!')
+            self.rate.sleep()
+    
+    def turn_right(self):
+        msg = Twist()
+        msg.linear.x = 0.1
+        msg.angular.z = -0.3
+        self.cmd_vel.publish(msg)
+
+    def turn_left(self):
+        msg = Twist()
+        msg.angular.z = 0.5
+        self.cmd_vel.publish(msg)
+
+    def follow_the_wall(self):
+        msg = Twist()
+        msg.linear.x = 0.5
+        self.cmd_vel.publish(msg)
+        
     # 直接命令
     def goByCommand(self, command, time):
         for i in range(int(self.hz*time)):
@@ -109,7 +155,7 @@ class Guide():
         return np.mean(np.array(self.scanMsg.ranges[start:end]))
 
     # scanMsg 激光雷达数据，正负90度共720个数据
-    def callback(self,msg):
+    def laserScanCall(self,msg):
         self.scanMsg = msg
     
     def shutdown(self):
