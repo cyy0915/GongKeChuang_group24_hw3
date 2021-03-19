@@ -9,6 +9,7 @@ import numpy as np
 import math
 from nav_msgs.msg import Odometry
 from tf import transformations
+import threading
 
 # 自己写的Guide()类，还没写完，大家可以自行修改使用
 # cmd_vel 直接命令
@@ -78,36 +79,33 @@ class Guide():
             self.changeStateInWallFollowing(2)
 
     def wallFollowing(self):
-        while not rospy.is_shutdown():
-            self.determineStateInWallFollowing()
+        self.determineStateInWallFollowing()
 
-            msg = Twist()
-            if self.state == 0:
-                self.turn_right()
-            elif self.state == 1:
-                self.turn_left()
-            elif self.state == 2:
-                self.follow_the_wall()
-            else:
-                rospy.logerr('Unknown state!')
-            self.rate.sleep()
+        if self.state == 0:
+            self.turn_right()
+        elif self.state == 1:
+            self.turn_left()
+        elif self.state == 2:
+            self.follow_the_wall()
+        else:
+            rospy.logerr('Unknown state!')
     
     def turn_right(self):
         msg = Twist()
-        msg.linear.x = 0.1
+        msg.linear.x = 0.15
         msg.angular.z = -0.3
         self.cmd_vel.publish(msg)
 
     def turn_left(self):
         msg = Twist()
-        msg.angular.z = 0.5
+        msg.angular.z = 0.3
         self.cmd_vel.publish(msg)
 
     def follow_the_wall(self):
         msg = Twist()
         msg.linear.x = 0.5
         self.cmd_vel.publish(msg)
-        
+
     # 直接命令
     def goByCommand(self, command, time):
         for i in range(int(self.hz*time)):
