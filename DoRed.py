@@ -3,7 +3,7 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 import actionlib
 from actionlib_msgs.msg import *
 from geometry_msgs.msg import Pose, Point, Quaternion
-from scanBed import getLengthOfBed
+import numpy as np
 
 
 def doRed(myGuide, myVision):
@@ -20,7 +20,12 @@ def doRed(myGuide, myVision):
 
         if success:
             rospy.loginfo("Hooray, reached the desired pose")
-            getLengthOfBed()
+            #######get length of bed###############
+            scanResult = myGuide.getCartesianCoordinate()
+            x_array = scanResult[:, 0]
+            y_array = scanResult[:, 1]
+            #然后怎么办？
+            ################################
             position = {'x': 8.5, 'y': -8}
             rospy.loginfo("Go to (%s, %s) pose", position['x'], position['y'])
             success = navigator.goto(position, quaternion)
