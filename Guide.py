@@ -10,6 +10,7 @@ import math
 from nav_msgs.msg import Odometry
 from tf import transformations
 import threading
+import cmath
 
 # 自己写的Guide()类，还没写完，大家可以自行修改使用
 # cmd_vel 直接命令
@@ -23,6 +24,7 @@ class Guide():
         self.move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
         self.hz = 10
         self.rate = rospy.Rate(self.hz)
+        self.scanCoordinate = None
         rospy.sleep(1)
         success = self.move_base.wait_for_server(rospy.Duration(5))
         print(success)
@@ -142,6 +144,7 @@ class Guide():
             self.move_base.cancel_goal()
 
         self.goal_sent = False
+        self.cmd_vel.publish(Twist())
         return result
 
     # 计算正前方20度的平均距离
@@ -156,6 +159,13 @@ class Guide():
     def laserScanCall(self,msg):
         self.scanMsg = msg
     
+    def getCartesianCoordinate(self):
+        self.scanCoordinate = np.zeros([720,2])
+        for i in range(720):
+            tmp = cmath.rect(self.scanMsg.ranges[i], i * cmath.pi/720)
+            self.scanCoordinate[i] = [tmp.real, tmp.imag]
+        return self.scanCoordinate
+            
     def shutdown(self):
         self.move_base.cancel_goal()
         self.cmd_vel.publish(Twist())
