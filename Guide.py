@@ -37,18 +37,13 @@ class Guide():
             'fleft': 0,
         }
         self.state = 0
-        self.state_dict = {
-            0: 'find the wall',
-            1: 'turn left',
-            2: 'follow the wall',
-        }
 
         rospy.loginfo("Start")
     
     # 直走遇到障碍物停下
     def goStraightNoStop(self, stopDistance = 0.5):
         move_cmd = Twist()
-        move_cmd.linear.x = 0.2
+        move_cmd.linear.x = 0.1
         move_cmd.angular.z = 0
         while self.getFrontDistance() > stopDistance:
             self.cmd_vel.publish(move_cmd)
@@ -57,10 +52,10 @@ class Guide():
 
     def changeStateInWallFollowing(self, state):
         if state != self.state:
-            print 'Wall follower - [%s] - %s' % (state, self.state_dict[state])
+            #print 'Wall follower - [%s] - %s' % (state, self.state_dict[state])
             self.state = state
 
-    def determineStateInWallFollowing(self):
+    def determineStateInWallFollowing(self, reverse = False):
         self.regions = {
             'fright': min(min(self.scanMsg.ranges[144:287]), 10),
             'front':  min(min(self.scanMsg.ranges[288:431]), 10),
@@ -70,27 +65,47 @@ class Guide():
         state_description = ''
         
         d = 0.7
-        if regions['front'] < d:
-            state_description = 'case 1 - need to turn left'
-            self.changeStateInWallFollowing(1)
-        elif regions['fright'] > d:
-            state_description = 'case 2 - need to turn right'
-            self.changeStateInWallFollowing(0)
-        else: 
-            state_description = 'case 3 - follow the wall'
-            self.changeStateInWallFollowing(2)
-
-    def wallFollowing(self):
-        self.determineStateInWallFollowing()
-
-        if self.state == 0:
-            self.turn_right()
-        elif self.state == 1:
-            self.turn_left()
-        elif self.state == 2:
-            self.follow_the_wall()
+        if reverse:
+            if regions['front'] < d:
+                state_description = 'case 1 - need to turn right'
+                self.changeStateInWallFollowing(1)
+            elif regions['fleft'] > d:
+                state_description = 'case 2 - need to turn left'
+                self.changeStateInWallFollowing(0)
+            else: 
+                state_description = 'case 3 - follow the wall'
+                self.changeStateInWallFollowing(2)
         else:
-            rospy.logerr('Unknown state!')
+            if regions['front'] < d:
+                state_description = 'case 1 - need to turn left'
+                self.changeStateInWallFollowing(1)
+            elif regions['fright'] > d:
+                state_description = 'case 2 - need to turn right'
+                self.changeStateInWallFollowing(0)
+            else: 
+                state_description = 'case 3 - follow the wall'
+                self.changeStateInWallFollowing(2)
+
+    def wallFollowing(self, reverse = False):
+        self.determineStateInWallFollowing(reverse)
+        if reverse:
+            if self.state == 0:
+                self.turn_left_r()
+            elif self.state == 1:
+                self.turn_right_r()
+            elif self.state == 2:
+                self.follow_the_wall()
+            else:
+                rospy.logerr('Unknown state!')
+        else:
+            if self.state == 0:
+                self.turn_right()
+            elif self.state == 1:
+                self.turn_left()
+            elif self.state == 2:
+                self.follow_the_wall()
+            else:
+                rospy.logerr('Unknown state!')
     
     def turn_right(self):
         msg = Twist()
@@ -100,6 +115,17 @@ class Guide():
 
     def turn_left(self):
         msg = Twist()
+        msg.angular.z = 0.3
+        self.cmd_vel.publish(msg)
+
+    def turn_right_r(self):
+        msg = Twist()
+        msg.angular.z = -0.3
+        self.cmd_vel.publish(msg)
+
+    def turn_left_r(self):
+        msg = Twist()
+        msg.linear.x = 0.15
         msg.angular.z = 0.3
         self.cmd_vel.publish(msg)
 
